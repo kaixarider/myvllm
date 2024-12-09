@@ -116,6 +116,7 @@ class RequestMetrics:
     first_scheduled_time: Optional[float]
     first_token_time: Optional[float]
     time_in_queue: Optional[float]
+    first_decode_time:Optional[float]=None
     finished_time: Optional[float] = None
     scheduler_time: Optional[float] = None
     model_forward_time: Optional[float] = None
@@ -647,7 +648,8 @@ class SequenceGroup:
                                       last_token_time=arrival_time,
                                       first_scheduled_time=None,
                                       first_token_time=None,
-                                      time_in_queue=None)
+                                      time_in_queue=None,
+                                      first_decode_time=None)
         self.lora_request = lora_request
         self.prompt_logprobs: Optional[PromptLogprobs] = None
         self.state = SequenceGroupState()

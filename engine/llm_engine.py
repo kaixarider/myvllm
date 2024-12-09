@@ -61,8 +61,8 @@ from vllm.usage.usage_lib import (UsageContext, is_usage_stats_enabled,
                                   usage_message)
 from vllm.utils import Counter, Device, deprecate_kwargs, weak_bind
 from vllm.version import __version__ as VLLM_VERSION
-
-import sys
+from vllm.singleton import record_operator
+import sys,time
 logger = init_logger(__name__)
 _LOCAL_LOGGING_INTERVAL_SEC = 5
 
@@ -1651,7 +1651,9 @@ class LLMEngine:
             len(scheduler.swapped) for scheduler in self.scheduler)
         num_waiting_sys = sum(
             len(scheduler.waiting) for scheduler in self.scheduler)
-
+        num_running_prefill=sum(
+            scheduler.get_running_prefill() for scheduler in self.scheduler
+        )
         # KV Cache Usage in %
         num_total_gpu = self.cache_config.num_gpu_blocks
         gpu_cache_usage_sys = 0.
@@ -1668,7 +1670,8 @@ class LLMEngine:
                 scheduler.block_manager.get_num_free_cpu_blocks()
                 for scheduler in self.scheduler)
             cpu_cache_usage_sys = 1.0 - (num_free_cpu / num_total_cpu)
-
+        if num_running_prefill!=0:
+            record_operator.num_of_block=max(record_operator.num_of_block,num_total_gpu-num_free_gpu)
         # Prefix Cache Hit Rate. Note that we always use
         # the cache hit rate of the first virtual engine.
         cpu_prefix_cache_hit_rate = self.scheduler[

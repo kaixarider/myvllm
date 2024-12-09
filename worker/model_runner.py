@@ -8,7 +8,7 @@ import weakref
 from dataclasses import dataclass
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set,
                     Tuple, Type, TypeVar, Union)
-from vllm.singleton import samebatch,samekvcache
+from vllm.singleton import record_operator
 import numpy as np
 import torch
 import torch.distributed
@@ -744,11 +744,7 @@ class ModelInputForGPUBuilder(ModelRunnerInputBuilderBase[ModelInputForGPU]):
                             decode_only: bool,
                             max_decode_seq_len: int,
                             max_encoder_seq_len: int = 0) -> bool:
-        return (decode_only and not self.runner.model_config.enforce_eager
-                and batch_size <= _BATCH_SIZES_TO_CAPTURE[-1]
-                and max_decode_seq_len <= self.runner.max_seq_len_to_capture
-                and max_encoder_seq_len <= self.runner.max_seq_len_to_capture
-                and batch_size <= self.runner.max_batchsize_to_capture)
+        return False
 
     def _get_cuda_graph_pad_size(self,
                                  num_seqs: int,
@@ -1076,7 +1072,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
         self.model_memory_usage = m.consumed_memory
         logger.info("Loading model weights took %.4f GB",
                     self.model_memory_usage / float(2**30))
-
+        record_operator.model_weight=self.model_memory_usage/float(2**30)
         if self.lora_config:
             assert supports_lora(
                 self.model
@@ -1384,6 +1380,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
 
     @torch.inference_mode()
     def capture_model(self, kv_caches: List[List[torch.Tensor]]) -> None:
+        return
         """Cuda graph capture a model.
 
         Note that CUDA graph's performance gain is negligible if number
@@ -1628,6 +1625,8 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
         assert model_input.attn_metadata is not None
         prefill_meta = model_input.attn_metadata.prefill_metadata
         decode_meta = model_input.attn_metadata.decode_metadata
+        if decode_meta:
+            decode_meta.use_cuda_graph=False
         # TODO(andoorve): We can remove this once all
         # virtual engines share the same kv cache.
         virtual_engine = model_input.virtual_engine
@@ -1664,25 +1663,15 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                 **seqlen_agnostic_kwargs)
             torch.cuda.synchronize()
             end=time.time()
-            if model_input.attn_metadata.decode_metadata and not model_input.attn_metadata.prefill_metadata:
+            duration=end-start
+            if prefill_meta:
+                prefill_data={'length':model_input.input_tokens.size().numel(),'time':duration}
+                record_operator.prefill_time.append(prefill_data)
+            if decode_meta:
+                record_operator.decode_time+=duration
+            torch.cuda.synchronize()
+            start=time.time()
                 
-                tpot=end-start
-                batchsize=sys.argv[1]
-                prompt_length=sys.argv[2]
-                kv_c=str(int(batchsize)*int(prompt_length))
-                if batchsize not in samebatch.tpot.keys():
-                    samebatch.tpot[batchsize]={}
-                if kv_c not in samebatch.tpot[batchsize].keys():
-                    samebatch.tpot[batchsize][kv_c]={'actual_batchsize':len(model_input.sampling_metadata.seq_groups),'data':[tpot]}
-                else:
-                    samebatch.tpot[batchsize][kv_c]['data'].append(tpot)
-                
-                if kv_c not in samekvcache.tpot.keys():
-                    samekvcache.tpot[kv_c]={}
-                if batchsize not in samekvcache.tpot[kv_c].keys():
-                    samekvcache.tpot[kv_c][batchsize]={'actual_batchsize':model_input.attn_metadata.num_decode_tokens,'data':[tpot]}
-                else:
-                    samekvcache.tpot[kv_c][batchsize]['data'].append(tpot)
         if (self.observability_config is not None
                 and self.observability_config.collect_model_forward_time):
             model_forward_end.record()
@@ -1751,7 +1740,10 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                 hidden_states = hidden_or_intermediate_states
 
             output.hidden_states = hidden_states
-
+        torch.cuda.synchronize()
+        end=time.time()
+        if decode_meta:
+            record_operator.sample_time+=end-start
         return [output]
 
 

@@ -8,7 +8,7 @@ from vllm.config import CacheConfig, DeviceConfig, ModelConfig, ParallelConfig
 from vllm.logger import init_logger
 from vllm.utils import (STR_DTYPE_TO_TORCH_DTYPE, get_dtype_size,
                         is_pin_memory_available)
-
+from vllm.singleton import record_operator
 logger = init_logger(__name__)
 
 
@@ -109,6 +109,7 @@ class CacheEngine:
             parallel_config)
 
         key_cache_block = cache_config.block_size * num_heads * head_size
+
         value_cache_block = key_cache_block
         total = num_attention_layers * (key_cache_block + value_cache_block)
         if cache_config.cache_dtype == "auto":
@@ -116,4 +117,5 @@ class CacheEngine:
         else:
             dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
         dtype_size = get_dtype_size(dtype)
+        record_operator.block_size=dtype_size*total
         return dtype_size * total
