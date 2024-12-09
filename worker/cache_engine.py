@@ -8,7 +8,8 @@ from vllm.config import CacheConfig, DeviceConfig, ModelConfig, ParallelConfig
 from vllm.logger import init_logger
 from vllm.utils import (STR_DTYPE_TO_TORCH_DTYPE, get_dtype_size,
                         is_pin_memory_available)
-
+import ray
+from vllm.singleton import raytimer,parametertype
 logger = init_logger(__name__)
 
 
@@ -116,4 +117,6 @@ class CacheEngine:
         else:
             dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
         dtype_size = get_dtype_size(dtype)
+        worker1=ray.get_actor("worker1")
+        worker1.set_value.remote(parametertype.block_size,dtype_size * total)
         return dtype_size * total
