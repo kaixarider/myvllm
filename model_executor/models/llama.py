@@ -51,14 +51,14 @@ from vllm.model_executor.pooling_metadata import PoolingMetadata
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors, PoolerOutput
-from vllm.singleton import raytimer,parametertype
+from vllm.singleton import raytimer,metricstype
 import ray
 from .interfaces import SupportsLoRA, SupportsPP
 from .utils import (AutoWeightsLoader, PPMissingLayer, is_pp_missing_parameter,
                     make_empty_intermediate_tensors_factory, make_layers,
                     maybe_prefix)
 
-
+import time
 class LlamaMLP(nn.Module):
 
     def __init__(
@@ -185,11 +185,37 @@ class LlamaAttention(nn.Module):
         attn_metadata: AttentionMetadata,
     ) -> torch.Tensor:
         worker1=ray.get_actor("worker1")
+        torch.cuda.synchronize()
+        start=time.time()
         qkv, _ = self.qkv_proj(hidden_states)
+        torch.cuda.synchronize()
+        end=time.time()
+        if attn_metadata.prefill_metadata:
+            worker1.add_value.remote(end-start,metricstype.prefill_gemm)
+        if attn_metadata.decode_metadata:
+            worker1.add_value.remote(end-start,metricstype.decode_gemm)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q, k = self.rotary_emb(positions, q, k)
+        torch.cuda.synchronize()
+        start=time.time()
         attn_output = self.attn(q, k, v, kv_cache, attn_metadata)
+        torch.cuda.synchronize()
+        end=time.time()
+        if attn_metadata.prefill_metadata:
+            ray.get(worker1.add_value.remote(end-start,metricstype.prefill_attention))
+        if attn_metadata.decode_metadata:
+            ray.get(worker1.add_value.remote(end-start,metricstype.decode_attention))
+        
+        
+        torch.cuda.synchronize()
+        start=time.time()
         output, _ = self.o_proj(attn_output)
+        torch.cuda.synchronize()
+        end=time.time()
+        if attn_metadata.prefill_metadata:
+            ray.get(worker1.add_value.remote(end-start,metricstype.prefill_gemm))
+        if attn_metadata.decode_metadata:
+            ray.get(worker1.add_value.remote(end-start,metricstype.decode_gemm))
         return output
 
 

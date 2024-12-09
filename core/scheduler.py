@@ -17,7 +17,8 @@ from vllm.sequence import (Sequence, SequenceData, SequenceGroup,
                            SequenceGroupMetadata, SequenceGroupMetadataDelta,
                            SequenceStatus)
 from vllm.utils import Device, PyObjectCache
-
+from vllm.singleton import raytimer,metricstype
+import ray
 logger = init_logger(__name__)
 
 # Test-only. If configured, decode is preempted with
@@ -407,7 +408,8 @@ class Scheduler:
     def num_decoding_tokens_per_seq(self) -> int:
         """The number of new tokens."""
         return 1
-
+    def get_running_prefill(self)->int:
+        return sum(1 for sequence_group in self.waiting if sequence_group.is_prefill())
     def add_seq_group(self, seq_group: SequenceGroup) -> None:
         # Add sequence groups to the waiting queue.
         self.waiting.append(seq_group)
@@ -1347,6 +1349,11 @@ class Scheduler:
         self._seq_group_metadata_cache[self.next_cache_id].reset()
 
         scheduler_time = time.perf_counter() - scheduler_start_time
+        worker1=ray.get_actor("worker1")
+        if scheduler_outputs.num_prefill_groups>0:
+            worker1.add_value.remote(metricstype.prefill_schedule,scheduler_time)
+        else:
+            worker1.add_value.remote(metricstype.decode_schedule,scheduler_time)
         # Add this to scheduler time to all the sequences that are currently
         # running. This will help estimate if the scheduler is a significant
         # component in the e2e latency.

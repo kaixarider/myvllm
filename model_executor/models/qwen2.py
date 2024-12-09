@@ -53,7 +53,8 @@ from .interfaces import SupportsLoRA, SupportsPP
 from .utils import (AutoWeightsLoader, PPMissingLayer, is_pp_missing_parameter,
                     make_empty_intermediate_tensors_factory, make_layers,
                     maybe_prefix)
-
+import ray,time
+from vllm.singleton import raytimer,metricstype
 
 class Qwen2MLP(nn.Module):
 
@@ -165,11 +166,38 @@ class Qwen2Attention(nn.Module):
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
     ) -> torch.Tensor:
+        worker1=ray.get_actor("worker1")
+        torch.cuda.synchronize()
+        start=time.time()
         qkv, _ = self.qkv_proj(hidden_states)
+        torch.cuda.synchronize()
+        end=time.time()
+        if attn_metadata.prefill_metadata:
+            worker1.add_value.remote(end-start,metricstype.prefill_gemm)
+        if attn_metadata.decode_metadata:
+            worker1.add_value.remote(end-start,metricstype.decode_gemm)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q, k = self.rotary_emb(positions, q, k)
+        torch.cuda.synchronize()
+        start=time.time()
         attn_output = self.attn(q, k, v, kv_cache, attn_metadata)
+        torch.cuda.synchronize()
+        end=time.time()
+        if attn_metadata.prefill_metadata:
+            ray.get(worker1.add_value.remote(end-start,metricstype.prefill_attention))
+        if attn_metadata.decode_metadata:
+            ray.get(worker1.add_value.remote(end-start,metricstype.decode_attention))
+        
+        
+        torch.cuda.synchronize()
+        start=time.time()
         output, _ = self.o_proj(attn_output)
+        torch.cuda.synchronize()
+        end=time.time()
+        if attn_metadata.prefill_metadata:
+            ray.get(worker1.add_value.remote(end-start,metricstype.prefill_gemm))
+        if attn_metadata.decode_metadata:
+            ray.get(worker1.add_value.remote(end-start,metricstype.decode_gemm))
         return output
 
 

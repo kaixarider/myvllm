@@ -58,6 +58,8 @@ from vllm.worker.model_runner_base import (
     _init_attn_metadata_from_tensor_dict,
     _init_sampling_metadata_from_tensor_dict, dump_input_when_exception)
 import sys
+import time,ray
+from vllm.singleton import raytimer,parametertype,metricstype
 if TYPE_CHECKING:
     from vllm.attention.backends.abstract import AttentionBackend
 
@@ -1076,7 +1078,8 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
         self.model_memory_usage = m.consumed_memory
         logger.info("Loading model weights took %.4f GB",
                     self.model_memory_usage / float(2**30))
-
+        actor1=ray.get_actor("worker1")
+        actor1.set_value.remote(parametertype.model_weight,self.model_memory_usage/float(2**30))
         if self.lora_config:
             assert supports_lora(
                 self.model
@@ -1623,7 +1626,7 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                 model_input.prompt_adapter_mapping)
 
         self.attn_state.begin_forward(model_input)
-
+        worker1=ray.get_actor("worker1")
         # Currently cuda graph is only supported by the decode phase.
         assert model_input.attn_metadata is not None
         prefill_meta = model_input.attn_metadata.prefill_metadata
@@ -1664,25 +1667,11 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                 **seqlen_agnostic_kwargs)
             torch.cuda.synchronize()
             end=time.time()
-            if model_input.attn_metadata.decode_metadata and not model_input.attn_metadata.prefill_metadata:
-                
-                tpot=end-start
-                batchsize=sys.argv[1]
-                prompt_length=sys.argv[2]
-                kv_c=str(int(batchsize)*int(prompt_length))
-                if batchsize not in samebatch.tpot.keys():
-                    samebatch.tpot[batchsize]={}
-                if kv_c not in samebatch.tpot[batchsize].keys():
-                    samebatch.tpot[batchsize][kv_c]={'actual_batchsize':len(model_input.sampling_metadata.seq_groups),'data':[tpot]}
-                else:
-                    samebatch.tpot[batchsize][kv_c]['data'].append(tpot)
-                
-                if kv_c not in samekvcache.tpot.keys():
-                    samekvcache.tpot[kv_c]={}
-                if batchsize not in samekvcache.tpot[kv_c].keys():
-                    samekvcache.tpot[kv_c][batchsize]={'actual_batchsize':model_input.attn_metadata.num_decode_tokens,'data':[tpot]}
-                else:
-                    samekvcache.tpot[kv_c][batchsize]['data'].append(tpot)
+            if prefill_meta:
+                prefill_data={'token':model_input.input_tokens.size().numel(),'duration':end-start}
+                worker1.append_prefill.remote(prefill_data)
+            if decode_meta:
+                worker1.add_value.remote(metricstype.decode_time,end-start)
         if (self.observability_config is not None
                 and self.observability_config.collect_model_forward_time):
             model_forward_end.record()
@@ -1716,6 +1705,8 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
             model_input.async_callback()
 
         # Sample the next token.
+        torch.cuda.synchronize()
+        start=time.time()
         output: SamplerOutput = self.model.sample(
             logits=logits,
             sampling_metadata=model_input.sampling_metadata,
@@ -1751,7 +1742,9 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                 hidden_states = hidden_or_intermediate_states
 
             output.hidden_states = hidden_states
-
+        torch.cuda.synchronize()
+        end=time.time()
+        worker1.add_value.remote(metricstype.sample,end-start)
         return [output]
 
 
