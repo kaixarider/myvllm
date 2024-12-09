@@ -1670,6 +1670,7 @@ class LLMEngine:
                 scheduler.block_manager.get_num_free_cpu_blocks()
                 for scheduler in self.scheduler)
             cpu_cache_usage_sys = 1.0 - (num_free_cpu / num_total_cpu)
+        print(num_running_prefill)
         if num_running_prefill!=0:
             record_operator.num_of_block=max(record_operator.num_of_block,num_total_gpu-num_free_gpu)
         # Prefix Cache Hit Rate. Note that we always use
