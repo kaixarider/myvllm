@@ -8,7 +8,7 @@ import weakref
 from dataclasses import dataclass
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set,
                     Tuple, Type, TypeVar, Union)
-from vllm.singleton import samebatch,samekvcache
+from vllm.singleton import samebatch
 import numpy as np
 import torch
 import torch.distributed
@@ -1676,13 +1676,6 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                     samebatch.tpot[batchsize][kv_c]={'actual_batchsize':len(model_input.sampling_metadata.seq_groups),'data':[tpot]}
                 else:
                     samebatch.tpot[batchsize][kv_c]['data'].append(tpot)
-                
-                if kv_c not in samekvcache.tpot.keys():
-                    samekvcache.tpot[kv_c]={}
-                if batchsize not in samekvcache.tpot[kv_c].keys():
-                    samekvcache.tpot[kv_c][batchsize]={'actual_batchsize':model_input.attn_metadata.num_decode_tokens,'data':[tpot]}
-                else:
-                    samekvcache.tpot[kv_c][batchsize]['data'].append(tpot)
         if (self.observability_config is not None
                 and self.observability_config.collect_model_forward_time):
             model_forward_end.record()
