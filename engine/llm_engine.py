@@ -314,7 +314,7 @@ class LLMEngine:
         self.prompt_adapter_config = prompt_adapter_config
         self.observability_config = observability_config or ObservabilityConfig(
         )
-        self.log_stats = log_stats
+        self.log_stats = True
         self.use_cached_outputs = use_cached_outputs
 
         if not self.model_config.skip_tokenizer_init:
@@ -1282,6 +1282,8 @@ class LLMEngine:
         # For async case, we need to record the stats here.
         # For non-async case, the stats are done in the
         # LLMEngine/AsyncLLMEngine directly
+        self.do_log_stats(scheduler_outputs, outputs, finished_before,
+                              skip)
         if is_async:
             # Log stats.
             self.do_log_stats(scheduler_outputs, outputs, finished_before,
@@ -1651,9 +1653,9 @@ class LLMEngine:
             len(scheduler.swapped) for scheduler in self.scheduler)
         num_waiting_sys = sum(
             len(scheduler.waiting) for scheduler in self.scheduler)
-        num_running_prefill=sum(
-            scheduler.get_running_prefill() for scheduler in self.scheduler
-        )
+        num_running_prefill=0
+        for scheduler in self.scheduler:
+            num_running_prefill+=scheduler.get_running_prefill()
         # KV Cache Usage in %
         num_total_gpu = self.cache_config.num_gpu_blocks
         gpu_cache_usage_sys = 0.
@@ -1670,7 +1672,7 @@ class LLMEngine:
                 scheduler.block_manager.get_num_free_cpu_blocks()
                 for scheduler in self.scheduler)
             cpu_cache_usage_sys = 1.0 - (num_free_cpu / num_total_cpu)
-        print(num_running_prefill)
+        
         if num_running_prefill!=0:
             record_operator.num_of_block=max(record_operator.num_of_block,num_total_gpu-num_free_gpu)
         # Prefix Cache Hit Rate. Note that we always use
