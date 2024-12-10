@@ -118,5 +118,7 @@ class CacheEngine:
             dtype = STR_DTYPE_TO_TORCH_DTYPE[cache_config.cache_dtype]
         dtype_size = get_dtype_size(dtype)
         worker1=ray.get_actor("worker1")
+        worker2=ray.get_actor("worker2")
         worker1.set_value.remote(parametertype.block_size,dtype_size * total)
+        worker2.set_value.remote(parametertype.block_size,dtype_size * total)
         return dtype_size * total

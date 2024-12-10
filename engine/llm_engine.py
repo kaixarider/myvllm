@@ -1658,6 +1658,7 @@ class LLMEngine:
         num_running_prefill=0
         for scheduler in self.scheduler:
             num_running_prefill+=scheduler.get_running_prefill()
+        print(f"running prefill is {num_running_prefill}")
         # KV Cache Usage in %
         num_total_gpu = self.cache_config.num_gpu_blocks
         gpu_cache_usage_sys = 0.

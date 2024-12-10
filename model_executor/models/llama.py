@@ -184,6 +184,8 @@ class LlamaAttention(nn.Module):
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
     ) -> torch.Tensor:
+        current_device=torch.cuda.current_device()
+        worker2=ray.get_actor("worker2")
         worker1=ray.get_actor("worker1")
         torch.cuda.synchronize()
         start=time.time()
@@ -191,9 +193,15 @@ class LlamaAttention(nn.Module):
         torch.cuda.synchronize()
         end=time.time()
         if attn_metadata.prefill_metadata:
-            worker1.add_value.remote(metricstype.prefill_gemm,end-start)
+            if current_device==0:
+                worker1.add_value.remote(metricstype.prefill_gemm,end-start)
+            else:
+                worker2.add_value.remote(metricstype.prefill_gemm,end-start)
         if attn_metadata.decode_metadata:
-            worker1.add_value.remote(metricstype.decode_gemm,end-start)
+            if current_device==0:
+                worker1.add_value.remote(metricstype.decode_gemm,end-start)
+            else:
+                worker2.add_value.remote(metricstype.decode_gemm,end-start)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q, k = self.rotary_emb(positions, q, k)
         torch.cuda.synchronize()
@@ -202,10 +210,15 @@ class LlamaAttention(nn.Module):
         torch.cuda.synchronize()
         end=time.time()
         if attn_metadata.prefill_metadata:
-            ray.get(worker1.add_value.remote(metricstype.prefill_attention,end-start))
+            if current_device==0:
+                worker1.add_value.remote(metricstype.prefill_attention,end-start)
+            else:
+                worker2.add_value.remote(metricstype.prefill_attention,end-start)
         if attn_metadata.decode_metadata:
-            ray.get(worker1.add_value.remote(metricstype.decode_attention,end-start))
-        
+            if current_device==0:
+                worker1.add_value.remote(metricstype.decode_attention,end-start)
+            else:
+                worker2.add_value.remote(metricstype.decode_attention,end-start)
         
         torch.cuda.synchronize()
         start=time.time()
@@ -213,9 +226,15 @@ class LlamaAttention(nn.Module):
         torch.cuda.synchronize()
         end=time.time()
         if attn_metadata.prefill_metadata:
-            ray.get(worker1.add_value.remote(metricstype.prefill_gemm,end-start))
+            if current_device==0:
+                worker1.add_value.remote(metricstype.prefill_gemm,end-start)
+            else:
+                worker2.add_value.remote(metricstype.prefill_gemm,end-start)
         if attn_metadata.decode_metadata:
-            ray.get(worker1.add_value.remote(metricstype.decode_gemm,end-start))
+            if current_device==0:
+                worker1.add_value.remote(metricstype.decode_gemm,end-start)
+            else:
+                worker2.add_value.remote(metricstype.decode_gemm,end-start)
         return output
 
 
@@ -277,6 +296,9 @@ class LlamaDecoderLayer(nn.Module):
         attn_metadata: AttentionMetadata,
         residual: Optional[torch.Tensor],
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        current_device=torch.cuda.current_device()
+        worker2=ray.get_actor("worker2")
+        worker1=ray.get_actor("worker1")
         # Self Attention
         if residual is None:
             residual = hidden_states
@@ -290,9 +312,23 @@ class LlamaDecoderLayer(nn.Module):
                                        attn_metadata=attn_metadata)
 
         # Fully Connected
+        torch.cuda.synchronize()
+        start=time.time()
         hidden_states, residual = self.post_attention_layernorm(
             hidden_states, residual)
         hidden_states = self.mlp(hidden_states)
+        torch.cuda.synchronize()
+        end=time.time()
+        if attn_metadata.prefill_metadata:
+            if current_device==0:
+                worker1.add_value.remote(metricstype.prefill_gemm,end-start)
+            else:
+                worker2.add_value.remote(metricstype.prefill_gemm,end-start)
+        if attn_metadata.decode_metadata:
+            if current_device==0:
+                worker1.add_value.remote(metricstype.decode_gemm,end-start)
+            else:
+                worker2.add_value.remote(metricstype.decode_gemm,end-start)
         return hidden_states, residual
 
 

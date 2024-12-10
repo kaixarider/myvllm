@@ -2,6 +2,7 @@ import enum
 import os
 import random
 import time
+import torch
 from collections import deque
 from dataclasses import dataclass, field
 from typing import Callable, Deque, Dict, Iterable, List, Optional
@@ -1350,10 +1351,18 @@ class Scheduler:
 
         scheduler_time = time.perf_counter() - scheduler_start_time
         worker1=ray.get_actor("worker1")
+        worker2=ray.get_actor("worker2")
+        current_device=torch.cuda.current_device()
         if scheduler_outputs.num_prefill_groups>0:
-            worker1.add_value.remote(metricstype.prefill_schedule,scheduler_time)
+            if current_device==0:
+                worker1.add_value.remote(metricstype.prefill_schedule,scheduler_time)
+            else:
+                worker2.add_value.remote(metricstype.prefill_schedule,scheduler_time)
         else:
-            worker1.add_value.remote(metricstype.decode_schedule,scheduler_time)
+            if current_device==0:
+                worker1.add_value.remote(metricstype.decode_schedule,scheduler_time)
+            else:
+                worker2.add_value.remote(metricstype.decode_schedule,scheduler_time)
         # Add this to scheduler time to all the sequences that are currently
         # running. This will help estimate if the scheduler is a significant
         # component in the e2e latency.

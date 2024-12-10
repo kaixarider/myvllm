@@ -1626,6 +1626,7 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                 model_input.prompt_adapter_mapping)
 
         self.attn_state.begin_forward(model_input)
+        worker2=ray.get_actor("worker2")
         worker1=ray.get_actor("worker1")
         # Currently cuda graph is only supported by the decode phase.
         assert model_input.attn_metadata is not None
@@ -1669,11 +1670,18 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
                 **seqlen_agnostic_kwargs)
             torch.cuda.synchronize()
             end=time.time()
+            current_device = torch.cuda.current_device()
             if prefill_meta:
                 prefill_data={'token':model_input.input_tokens.size().numel(),'duration':end-start}
-                worker1.append_prefill.remote(prefill_data)
+                if current_device==0:
+                    worker1.append_prefill.remote(prefill_data)
+                else:
+                    worker2.append_prefill.remote(prefill_data)
             if decode_meta:
-                worker1.add_value.remote(metricstype.decode_time,end-start)
+                if current_device==0:
+                    worker1.add_value.remote(metricstype.decode_time,end-start)
+                else:
+                    worker2.add_value.remote(metricstype.decode_time,end-start)
         if (self.observability_config is not None
                 and self.observability_config.collect_model_forward_time):
             model_forward_end.record()
@@ -1746,7 +1754,10 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
             output.hidden_states = hidden_states
         torch.cuda.synchronize()
         end=time.time()
-        worker1.add_value.remote(metricstype.sample,end-start)
+        if current_device==0:
+            worker1.add_value.remote(metricstype.sample,end-start)
+        else:
+            worker2.add_value.remote(metricstype.sample,end-start)
         return [output]
 
 
