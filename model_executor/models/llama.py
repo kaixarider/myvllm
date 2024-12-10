@@ -191,9 +191,9 @@ class LlamaAttention(nn.Module):
         torch.cuda.synchronize()
         end=time.time()
         if attn_metadata.prefill_metadata:
-            worker1.add_value.remote(end-start,metricstype.prefill_gemm)
+            worker1.add_value.remote(metricstype.prefill_gemm,end-start)
         if attn_metadata.decode_metadata:
-            worker1.add_value.remote(end-start,metricstype.decode_gemm)
+            worker1.add_value.remote(metricstype.decode_gemm,end-start)
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q, k = self.rotary_emb(positions, q, k)
         torch.cuda.synchronize()
@@ -202,9 +202,9 @@ class LlamaAttention(nn.Module):
         torch.cuda.synchronize()
         end=time.time()
         if attn_metadata.prefill_metadata:
-            ray.get(worker1.add_value.remote(end-start,metricstype.prefill_attention))
+            ray.get(worker1.add_value.remote(metricstype.prefill_attention,end-start))
         if attn_metadata.decode_metadata:
-            ray.get(worker1.add_value.remote(end-start,metricstype.decode_attention))
+            ray.get(worker1.add_value.remote(metricstype.decode_attention,end-start))
         
         
         torch.cuda.synchronize()
@@ -213,9 +213,9 @@ class LlamaAttention(nn.Module):
         torch.cuda.synchronize()
         end=time.time()
         if attn_metadata.prefill_metadata:
-            ray.get(worker1.add_value.remote(end-start,metricstype.prefill_gemm))
+            ray.get(worker1.add_value.remote(metricstype.prefill_gemm,end-start))
         if attn_metadata.decode_metadata:
-            ray.get(worker1.add_value.remote(end-start,metricstype.decode_gemm))
+            ray.get(worker1.add_value.remote(metricstype.decode_gemm,end-start))
         return output
 
 

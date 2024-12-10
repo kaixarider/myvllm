@@ -1283,6 +1283,8 @@ class LLMEngine:
         # For async case, we need to record the stats here.
         # For non-async case, the stats are done in the
         # LLMEngine/AsyncLLMEngine directly
+        self.do_log_stats(scheduler_outputs, outputs, finished_before,
+                              skip)
         if is_async:
             # Log stats.
             self.do_log_stats(scheduler_outputs, outputs, finished_before,

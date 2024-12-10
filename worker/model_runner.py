@@ -8,7 +8,7 @@ import weakref
 from dataclasses import dataclass
 from typing import (TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set,
                     Tuple, Type, TypeVar, Union)
-from vllm.singleton import samebatch,samekvcache
+from vllm.singleton import raytimer,metricstype,parametertype
 import numpy as np
 import torch
 import torch.distributed
@@ -59,7 +59,6 @@ from vllm.worker.model_runner_base import (
     _init_sampling_metadata_from_tensor_dict, dump_input_when_exception)
 import sys
 import time,ray
-from vllm.singleton import raytimer,parametertype,metricstype
 if TYPE_CHECKING:
     from vllm.attention.backends.abstract import AttentionBackend
 
