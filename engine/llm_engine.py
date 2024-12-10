@@ -679,6 +679,7 @@ class LLMEngine:
         block_size = self.cache_config.block_size
         seq_id = next(self.seq_counter)
         eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request)
+        '''
         input_length=int(sys.argv[2])
         def adjust_tensor_length(list, l, pad_value=31):
             current_length = len(list)
@@ -688,7 +689,7 @@ class LLMEngine:
                 list + [pad_value] * (l - len(list))
                 return list
             
-        processed_inputs['prompt_token_ids']=adjust_tensor_length(processed_inputs['prompt_token_ids'],input_length)
+        processed_inputs['prompt_token_ids']=adjust_tensor_length(processed_inputs['prompt_token_ids'],input_length)'''
         if is_encoder_decoder_inputs(processed_inputs):
             decoder_inputs = processed_inputs["decoder"]
             encoder_inputs = processed_inputs["encoder"]
