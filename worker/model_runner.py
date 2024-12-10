@@ -1386,6 +1386,7 @@ class GPUModelRunnerBase(ModelRunnerBase[TModelInputForGPU]):
 
     @torch.inference_mode()
     def capture_model(self, kv_caches: List[List[torch.Tensor]]) -> None:
+        return
         """Cuda graph capture a model.
 
         Note that CUDA graph's performance gain is negligible if number
