@@ -408,8 +408,6 @@ class Scheduler:
         """The number of new tokens."""
         return 1
     
-    def get_running_prefill(self)->int:
-        return sum(1 for sequence_group in self.waiting if sequence_group.is_prefill())
     def add_seq_group(self, seq_group: SequenceGroup) -> None:
         # Add sequence groups to the waiting queue.
         self.waiting.append(seq_group)
