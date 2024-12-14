@@ -1,3 +1,5 @@
+#在execute_model里增加了测量sample 总体prefill和decode的时间，以及load_model model的大小
+#capture graph直接返回了。不然会有两次torch.cuda.synchronize引起bug
 import dataclasses
 import gc
 import inspect

@@ -1,3 +1,4 @@
+#增加了结束warmup的标志位
 """A GPU worker class."""
 import gc
 import os

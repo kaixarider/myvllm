@@ -2,7 +2,14 @@ import enum
 from enum import Enum
 import ray
 from typing import Union,Dict
-import torch
+
+import multiprocessing
+
+# 使用 multiprocessing.Value 来创建共享内存
+# 'd' 表示数据类型是 double，0.0 是初始值
+
+
+
 class record_operator:
     #metrics
     prefill_time:list=[]
@@ -12,7 +19,6 @@ class record_operator:
     decode_attention:float=0
     prefill_gemm:float=0
     decode_gemm:float=0
-    
     #parameter
     batchsize:int=0
     output_length:int=0
@@ -25,8 +31,6 @@ class metricstype(Enum):
     decode_attention="decode_attention"
     prefill_gemm="prefill_gemm"
     decode_gemm="decode_gemm"
-    prefill_schedule="prefill_schedule"
-    decode_schedule="decode_schedule"
     sample="sample"   
 class parametertype(Enum):
     batchsize="batchsize"
@@ -44,15 +48,18 @@ class raytimer:
         self.decode_attention:float=0
         self.prefill_gemm:float=0
         self.decode_gemm:float=0
-        self.prefill_schedule:float=0
-        self.decode_schedule:float=0
         self.sample:float=0
+
         #parameter
         self.batchsize:int=0
         self.output_length:int=0
         self.input_length:int=0
         self.model_weight:int=0 #GB
         self.stop_profile:bool=False
+        self.shared_time = multiprocessing.Value('d', 0.0)
+
+# 创建一个锁来保证线程安全
+        self.lock = multiprocessing.Lock()
     def add_value(self,type:metricstype,value:Union[int,float]):
         match type:
             case metricstype.prefill_time:
@@ -67,10 +74,6 @@ class raytimer:
                 self.prefill_gemm+=value
             case metricstype.decode_gemm:
                 self.decode_gemm+=value
-            case metricstype.prefill_schedule:
-                self.prefill_schedule+=value
-            case metricstype.decode_schedule:
-                self.decode_schedule+=value
             case metricstype.sample:
                 self.sample+=value
             case _:
@@ -102,10 +105,6 @@ class raytimer:
                 return self.decode_attention
             case metricstype.decode_gemm:
                 return self.decode_gemm
-            case metricstype.decode_schedule:
-                return self.decode_schedule
-            case metricstype.prefill_schedule:
-                return self.prefill_schedule
             case metricstype.decode_time:
                 return self.decode_time
             case metricstype.prefill_time:
@@ -122,6 +121,14 @@ class raytimer:
                 return self.batchsize
             case parametertype.stop_profile:
                 return self.stop_profile
+    def add_time(self,time_to_add):
+        with self.lock:
+            print(f"Adding {time_to_add} to shared_time. Current value: {self.shared_time.value}")
+            self.shared_time.value += time_to_add  
+
+    def get_accumulated_time(self):
+        with self.lock:  # 确保访问时线程安全
+            return self.shared_time.value  # 读取共享内存中的值
 class samebatch:
     input_length:int=0
     batchsize:int=0
