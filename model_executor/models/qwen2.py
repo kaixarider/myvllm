@@ -54,8 +54,7 @@ from .utils import (AutoWeightsLoader, PPMissingLayer, is_pp_missing_parameter,
                     make_empty_intermediate_tensors_factory, make_layers,
                     maybe_prefix)
 
-import time
-from vllm.singleton import record_operator
+
 class Qwen2MLP(nn.Module):
 
     def __init__(
@@ -166,37 +165,11 @@ class Qwen2Attention(nn.Module):
         kv_cache: torch.Tensor,
         attn_metadata: AttentionMetadata,
     ) -> torch.Tensor:
-        torch.cuda.synchronize()
-        start=time.time()
         qkv, _ = self.qkv_proj(hidden_states)
-        torch.cuda.synchronize()
-        end=time.time()
-        if attn_metadata.prefill_metadata:
-            record_operator.prefill_gemm+=end-start
-        if attn_metadata.decode_metadata:
-            record_operator.decode_gemm+=end-start
-
-        torch.cuda.synchronize()
-        start=time.time()
         q, k, v = qkv.split([self.q_size, self.kv_size, self.kv_size], dim=-1)
         q, k = self.rotary_emb(positions, q, k)
         attn_output = self.attn(q, k, v, kv_cache, attn_metadata)
-        torch.cuda.synchronize()
-        end=time.time()
-        if attn_metadata.prefill_metadata:
-            record_operator.prefill_attention+=end-start
-        if attn_metadata.decode_metadata:
-            record_operator.decode_attention+=end-start
-
-        torch.cuda.synchronize()
-        start=time.time()
         output, _ = self.o_proj(attn_output)
-        torch.cuda.synchronize()
-        end=time.time()
-        if attn_metadata.prefill_metadata:
-            record_operator.prefill_gemm+=end-start
-        if attn_metadata.decode_metadata:
-            record_operator.decode_gemm+=end-start
         return output
 
 
@@ -262,15 +235,7 @@ class Qwen2DecoderLayer(nn.Module):
         # Fully Connected
         hidden_states, residual = self.post_attention_layernorm(
             hidden_states, residual)
-        torch.cuda.synchronize()
-        start=time.time()
         hidden_states = self.mlp(hidden_states)
-        torch.cuda.synchronize()
-        end=time.time()
-        if attn_metadata.prefill_metadata:
-            record_operator.prefill_gemm+=end-start
-        if attn_metadata.decode_metadata:
-            record_operator.decode_gemm+=end-start
         return hidden_states, residual
 
 

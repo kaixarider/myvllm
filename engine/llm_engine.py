@@ -61,8 +61,7 @@ from vllm.usage.usage_lib import (UsageContext, is_usage_stats_enabled,
                                   usage_message)
 from vllm.utils import Counter, Device, deprecate_kwargs, weak_bind
 from vllm.version import __version__ as VLLM_VERSION
-from vllm.singleton import record_operator
-import sys,time
+
 logger = init_logger(__name__)
 _LOCAL_LOGGING_INTERVAL_SEC = 5
 
@@ -314,7 +313,7 @@ class LLMEngine:
         self.prompt_adapter_config = prompt_adapter_config
         self.observability_config = observability_config or ObservabilityConfig(
         )
-        self.log_stats = True
+        self.log_stats = log_stats
         self.use_cached_outputs = use_cached_outputs
 
         if not self.model_config.skip_tokenizer_init:
@@ -643,8 +642,7 @@ class LLMEngine:
         if self.prompt_adapter_config:
             self.prompt_adapter_config.verify_with_model_config(
                 self.model_config)
-    
-    
+
     def _add_processed_request(
         self,
         request_id: str,
@@ -678,23 +676,14 @@ class LLMEngine:
         block_size = self.cache_config.block_size
         seq_id = next(self.seq_counter)
         eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request)
-        input_length=int(sys.argv[2])
-        def adjust_tensor_length(list, l, pad_value=31):
-            current_length = len(list)
-            if current_length > l:
-                return list[:l]
-            elif current_length <= l:
-                list + [pad_value] * (l - len(list))
-                return list
-            
-        processed_inputs['prompt_token_ids']=adjust_tensor_length(processed_inputs['prompt_token_ids'],input_length)
+
         if is_encoder_decoder_inputs(processed_inputs):
             decoder_inputs = processed_inputs["decoder"]
             encoder_inputs = processed_inputs["encoder"]
         else:
             decoder_inputs = processed_inputs
             encoder_inputs = None
-        
+
         seq = Sequence(seq_id, decoder_inputs, block_size, eos_token_id,
                        lora_request, prompt_adapter_request)
 
@@ -1282,8 +1271,6 @@ class LLMEngine:
         # For async case, we need to record the stats here.
         # For non-async case, the stats are done in the
         # LLMEngine/AsyncLLMEngine directly
-        self.do_log_stats(scheduler_outputs, outputs, finished_before,
-                              skip)
         if is_async:
             # Log stats.
             self.do_log_stats(scheduler_outputs, outputs, finished_before,
@@ -1653,9 +1640,7 @@ class LLMEngine:
             len(scheduler.swapped) for scheduler in self.scheduler)
         num_waiting_sys = sum(
             len(scheduler.waiting) for scheduler in self.scheduler)
-        num_running_prefill=0
-        for scheduler in self.scheduler:
-            num_running_prefill+=scheduler.get_running_prefill()
+
         # KV Cache Usage in %
         num_total_gpu = self.cache_config.num_gpu_blocks
         gpu_cache_usage_sys = 0.
@@ -1672,9 +1657,7 @@ class LLMEngine:
                 scheduler.block_manager.get_num_free_cpu_blocks()
                 for scheduler in self.scheduler)
             cpu_cache_usage_sys = 1.0 - (num_free_cpu / num_total_cpu)
-        
-        if num_running_prefill!=0:
-            record_operator.num_of_block=max(record_operator.num_of_block,num_total_gpu-num_free_gpu)
+
         # Prefix Cache Hit Rate. Note that we always use
         # the cache hit rate of the first virtual engine.
         cpu_prefix_cache_hit_rate = self.scheduler[
