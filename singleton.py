@@ -12,9 +12,7 @@ class record_operator:
     decode_attention:float=0
     prefill_gemm:float=0
     decode_gemm:float=0
-    prefill_schedule:float=0
-    decode_schedule:float=0
-    
+    finish_profile:bool=False
     #parameter
     batchsize:int=0
     output_length:int=0
@@ -27,8 +25,6 @@ class metricstype(Enum):
     decode_attention="decode_attention"
     prefill_gemm="prefill_gemm"
     decode_gemm="decode_gemm"
-    prefill_schedule="prefill_schedule"
-    decode_schedule="decode_schedule"
     sample="sample"   
 class parametertype(Enum):
     batchsize="batchsize"
@@ -67,10 +63,6 @@ class raytimer:
                 self.prefill_gemm+=value
             case metricstype.decode_gemm:
                 self.decode_gemm+=value
-            case metricstype.prefill_schedule:
-                self.prefill_schedule+=value
-            case metricstype.decode_schedule:
-                self.decode_schedule+=value
             case metricstype.sample:
                 self.sample+=value
             case _:
@@ -101,10 +93,6 @@ class raytimer:
                 return self.decode_attention
             case metricstype.decode_gemm:
                 return self.decode_gemm
-            case metricstype.decode_schedule:
-                return self.decode_schedule
-            case metricstype.prefill_schedule:
-                return self.prefill_schedule
             case metricstype.decode_time:
                 return self.decode_time
             case metricstype.prefill_time:
