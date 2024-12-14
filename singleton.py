@@ -35,6 +35,7 @@ class parametertype(Enum):
     model_weight="model_weight"
     input_length="input_length"
     output_length="output_length"
+    finish_profile="finish_profile"
 @ray.remote
 class raytimer:
     def __init__(self):
@@ -53,6 +54,7 @@ class raytimer:
         self.output_length:int=0
         self.input_length:int=0
         self.model_weight:int=0 #GB
+        self.finish_profile:bool=False
     def add_value(self,type:metricstype,value:Union[int,float]):
         match type:
             case metricstype.prefill_time:
@@ -87,7 +89,8 @@ class raytimer:
                 self.model_weight=value
             case _:
                 print(f"warning!type is {type.name}no such type in set_value")
-
+    def finish_profile(self):
+        self.finish_profile=True
     def append_prefill(self,prefill_data:dict):
         self.prefill_time.append(prefill_data)
         
