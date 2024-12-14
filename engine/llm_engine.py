@@ -64,7 +64,7 @@ from vllm.version import __version__ as VLLM_VERSION
 from vllm.singleton import record_operator
 import sys,time
 logger = init_logger(__name__)
-_LOCAL_LOGGING_INTERVAL_SEC = 1
+_LOCAL_LOGGING_INTERVAL_SEC = 5
 
 
 def _load_generation_config_dict(model_config: ModelConfig) -> Dict[str, Any]:
@@ -1653,6 +1653,9 @@ class LLMEngine:
             len(scheduler.swapped) for scheduler in self.scheduler)
         num_waiting_sys = sum(
             len(scheduler.waiting) for scheduler in self.scheduler)
+        num_running_prefill=0
+        for scheduler in self.scheduler:
+            num_running_prefill+=scheduler.get_running_prefill()
         # KV Cache Usage in %
         num_total_gpu = self.cache_config.num_gpu_blocks
         gpu_cache_usage_sys = 0.
@@ -1670,6 +1673,8 @@ class LLMEngine:
                 for scheduler in self.scheduler)
             cpu_cache_usage_sys = 1.0 - (num_free_cpu / num_total_cpu)
         
+        if num_running_prefill!=0:
+            record_operator.num_of_block=max(record_operator.num_of_block,num_total_gpu-num_free_gpu)
         # Prefix Cache Hit Rate. Note that we always use
         # the cache hit rate of the first virtual engine.
         cpu_prefix_cache_hit_rate = self.scheduler[
