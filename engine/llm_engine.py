@@ -1656,9 +1656,6 @@ class LLMEngine:
         num_waiting_sys = sum(
             len(scheduler.waiting) for scheduler in self.scheduler)
         num_running_prefill=0
-        for scheduler in self.scheduler:
-            num_running_prefill+=scheduler.get_running_prefill()
-        print(f"running prefill is {num_running_prefill}")
         # KV Cache Usage in %
         num_total_gpu = self.cache_config.num_gpu_blocks
         gpu_cache_usage_sys = 0.
@@ -1667,9 +1664,6 @@ class LLMEngine:
                 scheduler.block_manager.get_num_free_gpu_blocks()
                 for scheduler in self.scheduler)
             gpu_cache_usage_sys = 1.0 - (num_free_gpu / num_total_gpu)
-        if num_running_prefill!=0:
-            worker1=ray.get_actor("worker1")
-            worker1.max_value.remote(metricstype.num_block,num_total_gpu-num_free_gpu)
         num_total_cpu = self.cache_config.num_cpu_blocks
         cpu_cache_usage_sys = 0.
         if num_total_cpu:  # Guard against both None and 0
