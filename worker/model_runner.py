@@ -1671,13 +1671,14 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
             torch.cuda.synchronize()
             end=time.time()
             current_device = torch.cuda.current_device()
-            if prefill_meta:
+            finish_profile=ray.get(worker1.get_value.remote(parametertype.stop_profile))
+            if prefill_meta and finish_profile:
                 prefill_data={'token':model_input.input_tokens.size().numel(),'duration':end-start}
                 if current_device==0:
                     worker1.append_prefill.remote(prefill_data)
                 else:
                     worker2.append_prefill.remote(prefill_data)
-            if decode_meta:
+            if decode_meta and finish_profile:
                 if current_device==0:
                     worker1.add_value.remote(metricstype.decode_time,end-start)
                 else:
@@ -1754,10 +1755,11 @@ class ModelRunner(GPUModelRunnerBase[ModelInputForGPUWithSamplingMetadata]):
             output.hidden_states = hidden_states
         torch.cuda.synchronize()
         end=time.time()
-        if current_device==0:
-            worker1.add_value.remote(metricstype.sample,end-start)
-        else:
-            worker2.add_value.remote(metricstype.sample,end-start)
+        if finish_profile:
+            if current_device==0:
+                worker1.add_value.remote(metricstype.sample,end-start)
+            else:
+                worker2.add_value.remote(metricstype.sample,end-start)
         return [output]
 
 

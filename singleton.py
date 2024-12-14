@@ -12,8 +12,6 @@ class record_operator:
     decode_attention:float=0
     prefill_gemm:float=0
     decode_gemm:float=0
-    prefill_schedule:float=0
-    decode_schedule:float=0
     
     #parameter
     batchsize:int=0
@@ -35,7 +33,7 @@ class parametertype(Enum):
     model_weight="model_weight"
     input_length="input_length"
     output_length="output_length"
-    finish_profile="finish_profile"
+    stop_profile="finish_profile"
 @ray.remote
 class raytimer:
     def __init__(self):
@@ -54,7 +52,7 @@ class raytimer:
         self.output_length:int=0
         self.input_length:int=0
         self.model_weight:int=0 #GB
-        self.finish_profile:bool=False
+        self.stop_profile:bool=False
     def add_value(self,type:metricstype,value:Union[int,float]):
         match type:
             case metricstype.prefill_time:
@@ -90,7 +88,7 @@ class raytimer:
             case _:
                 print(f"warning!type is {type.name}no such type in set_value")
     def finish_profile(self):
-        self.finish_profile=True
+        self.stop_profile=True
     def append_prefill(self,prefill_data:dict):
         self.prefill_time.append(prefill_data)
         
@@ -122,7 +120,8 @@ class raytimer:
                 return self.output_length
             case parametertype.batchsize:
                 return self.batchsize
-    
+            case parametertype.stop_profile:
+                return self.stop_profile
 class samebatch:
     input_length:int=0
     batchsize:int=0

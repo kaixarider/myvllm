@@ -54,7 +54,7 @@ from .utils import (AutoWeightsLoader, PPMissingLayer, is_pp_missing_parameter,
                     make_empty_intermediate_tensors_factory, make_layers,
                     maybe_prefix)
 import ray,time
-from vllm.singleton import raytimer,metricstype
+from vllm.singleton import raytimer,metricstype,parametertype
 
 class Qwen2MLP(nn.Module):
 
@@ -169,17 +169,18 @@ class Qwen2Attention(nn.Module):
         current_device=torch.cuda.current_device()
         worker2=ray.get_actor("worker2")
         worker1=ray.get_actor("worker1")
+        finish_profile=ray.get(worker1.get_value.remote(parametertype.stop_profile))
         torch.cuda.synchronize()
         start=time.time()
         qkv, _ = self.qkv_proj(hidden_states)
         torch.cuda.synchronize()
         end=time.time()
-        if attn_metadata.prefill_metadata:
+        if attn_metadata.prefill_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.prefill_gemm,end-start)
             else:
                 worker2.add_value.remote(metricstype.prefill_gemm,end-start)
-        if attn_metadata.decode_metadata:
+        if attn_metadata.decode_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.decode_gemm,end-start)
             else:
@@ -191,12 +192,12 @@ class Qwen2Attention(nn.Module):
         attn_output = self.attn(q, k, v, kv_cache, attn_metadata)
         torch.cuda.synchronize()
         end=time.time()
-        if attn_metadata.prefill_metadata:
+        if attn_metadata.prefill_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.prefill_attention,end-start)
             else:
                 worker2.add_value.remote(metricstype.prefill_attention,end-start)
-        if attn_metadata.decode_metadata:
+        if attn_metadata.decode_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.decode_attention,end-start)
             else:
@@ -207,12 +208,12 @@ class Qwen2Attention(nn.Module):
         output, _ = self.o_proj(attn_output)
         torch.cuda.synchronize()
         end=time.time()
-        if attn_metadata.prefill_metadata:
+        if attn_metadata.prefill_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.prefill_gemm,end-start)
             else:
                 worker2.add_value.remote(metricstype.prefill_gemm,end-start)
-        if attn_metadata.decode_metadata:
+        if attn_metadata.decode_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.decode_gemm,end-start)
             else:
@@ -268,6 +269,7 @@ class Qwen2DecoderLayer(nn.Module):
         current_device=torch.cuda.current_device()
         worker2=ray.get_actor("worker2")
         worker1=ray.get_actor("worker1")
+        finish_profile=ray.get(worker1.get_value.remote(parametertype.stop_profile))
         # Self Attention
         if residual is None:
             residual = hidden_states
@@ -288,12 +290,12 @@ class Qwen2DecoderLayer(nn.Module):
         hidden_states = self.mlp(hidden_states)
         torch.cuda.synchronize()
         end=time.time()
-        if attn_metadata.prefill_metadata:
+        if attn_metadata.prefill_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.prefill_gemm,end-start)
             else:
                 worker2.add_value.remote(metricstype.prefill_gemm,end-start)
-        if attn_metadata.decode_metadata:
+        if attn_metadata.decode_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.decode_gemm,end-start)
             else:

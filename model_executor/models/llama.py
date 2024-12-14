@@ -51,7 +51,7 @@ from vllm.model_executor.pooling_metadata import PoolingMetadata
 from vllm.model_executor.sampling_metadata import SamplingMetadata
 from vllm.platforms import current_platform
 from vllm.sequence import IntermediateTensors, PoolerOutput
-from vllm.singleton import raytimer,metricstype
+from vllm.singleton import raytimer,metricstype,parametertype
 import ray
 from .interfaces import SupportsLoRA, SupportsPP
 from .utils import (AutoWeightsLoader, PPMissingLayer, is_pp_missing_parameter,
@@ -187,17 +187,18 @@ class LlamaAttention(nn.Module):
         current_device=torch.cuda.current_device()
         worker2=ray.get_actor("worker2")
         worker1=ray.get_actor("worker1")
+        finish_profile=ray.get(worker1.get_value.remote(parametertype.stop_profile))
         torch.cuda.synchronize()
         start=time.time()
         qkv, _ = self.qkv_proj(hidden_states)
         torch.cuda.synchronize()
         end=time.time()
-        if attn_metadata.prefill_metadata:
+        if attn_metadata.prefill_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.prefill_gemm,end-start)
             else:
                 worker2.add_value.remote(metricstype.prefill_gemm,end-start)
-        if attn_metadata.decode_metadata:
+        if attn_metadata.decode_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.decode_gemm,end-start)
             else:
@@ -209,12 +210,12 @@ class LlamaAttention(nn.Module):
         attn_output = self.attn(q, k, v, kv_cache, attn_metadata)
         torch.cuda.synchronize()
         end=time.time()
-        if attn_metadata.prefill_metadata:
+        if attn_metadata.prefill_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.prefill_attention,end-start)
             else:
                 worker2.add_value.remote(metricstype.prefill_attention,end-start)
-        if attn_metadata.decode_metadata:
+        if attn_metadata.decode_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.decode_attention,end-start)
             else:
@@ -225,12 +226,12 @@ class LlamaAttention(nn.Module):
         output, _ = self.o_proj(attn_output)
         torch.cuda.synchronize()
         end=time.time()
-        if attn_metadata.prefill_metadata:
+        if attn_metadata.prefill_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.prefill_gemm,end-start)
             else:
                 worker2.add_value.remote(metricstype.prefill_gemm,end-start)
-        if attn_metadata.decode_metadata:
+        if attn_metadata.decode_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.decode_gemm,end-start)
             else:
@@ -312,6 +313,7 @@ class LlamaDecoderLayer(nn.Module):
                                        attn_metadata=attn_metadata)
 
         # Fully Connected
+        finish_profile=ray.get(worker1.get_value.remote(parametertype.stop_profile))
         torch.cuda.synchronize()
         start=time.time()
         hidden_states, residual = self.post_attention_layernorm(
@@ -319,12 +321,12 @@ class LlamaDecoderLayer(nn.Module):
         hidden_states = self.mlp(hidden_states)
         torch.cuda.synchronize()
         end=time.time()
-        if attn_metadata.prefill_metadata:
+        if attn_metadata.prefill_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.prefill_gemm,end-start)
             else:
                 worker2.add_value.remote(metricstype.prefill_gemm,end-start)
-        if attn_metadata.decode_metadata:
+        if attn_metadata.decode_metadata and finish_profile:
             if current_device==0:
                 worker1.add_value.remote(metricstype.decode_gemm,end-start)
             else:
