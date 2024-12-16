@@ -61,7 +61,7 @@ from vllm.usage.usage_lib import (UsageContext, is_usage_stats_enabled,
                                   usage_message)
 from vllm.utils import Counter, Device, deprecate_kwargs, weak_bind
 from vllm.version import __version__ as VLLM_VERSION
-
+import sys
 logger = init_logger(__name__)
 _LOCAL_LOGGING_INTERVAL_SEC = 5
 
@@ -676,7 +676,15 @@ class LLMEngine:
         block_size = self.cache_config.block_size
         seq_id = next(self.seq_counter)
         eos_token_id = self.input_preprocessor.get_eos_token_id(lora_request)
-
+        def adjust_tensor_length(list, l, pad_value=31):
+            current_length = len(list)
+            if current_length > l:
+                return list[:l]
+            elif current_length <= l:
+                list + [pad_value] * (l - len(list))
+                return list
+            
+        processed_inputs['prompt_token_ids']=adjust_tensor_length(processed_inputs['prompt_token_ids'],sys.argv[2])
         if is_encoder_decoder_inputs(processed_inputs):
             decoder_inputs = processed_inputs["decoder"]
             encoder_inputs = processed_inputs["encoder"]
