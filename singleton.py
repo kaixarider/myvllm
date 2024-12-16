@@ -123,7 +123,7 @@ class raytimer:
                 return self.stop_profile
     def add_time(self,time_to_add):
         with self.lock:
-            print(f"Adding {time_to_add} to shared_time. Current value: {self.shared_time.value}")
+            
             self.shared_time.value += time_to_add  
 
     def get_accumulated_time(self):
